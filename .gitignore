@@ -1,0 +1,10 @@
+# Rust build output
+/target
+lazypants/target
+
+# Backup / temp
+**/*.rs.bk
+*.pdb
+
+# OS / editor
+.DS_Store
