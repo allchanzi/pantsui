@@ -1,0 +1,13 @@
+{
+  "name": "local",
+  "window": "local-stack",
+  "layout": "tiled",
+  "panes": [
+    {
+      "command": "nvim ."
+    },
+    {
+      "command": ""
+    }
+  ]
+}
