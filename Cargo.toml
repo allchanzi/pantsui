@@ -2,13 +2,24 @@
 name = "pantsui"
 version = "0.1.0"
 edition = "2024"
+description = "Terminal UI for exploring and interacting with Pants-managed repositories"
+license = "MIT"
+repository = "https://github.com/allchanzi/pantsui"
+homepage = "https://github.com/allchanzi/pantsui"
+readme = "README.md"
+keywords = ["pants", "tui", "terminal"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "pantsui"
+path = "src/main.rs"
 
 [dependencies]
 crossterm = "0.29.0"
 itertools = "0.14.0"
 ratatui = "0.30.0"
 serde = {version="1.0.228", features=["derive"]}
-serde_json =  "1.0.149" 
+serde_json =  "1.0.149"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2.0.18"
 tokio = {version = "1.52.0", features=["process"]}
