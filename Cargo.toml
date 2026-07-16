@@ -1,6 +1,6 @@
 [package]
 name = "pantsui"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Terminal UI for exploring and interacting with Pants-managed repositories"
 license = "MIT"
