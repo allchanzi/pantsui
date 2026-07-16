@@ -7,6 +7,7 @@ use ratatui::{
 use crate::{
     app::Effect,
     entities::Panel,
+    features::target::ui::TargetPanel,
     features::version::ui::VersionPanel,
     shared::ui::UiTheme,
 };
@@ -16,6 +17,7 @@ const HELP: &str = "? help • Tab cycle focus • h/j/k/l move focus • 1..5 j
 pub struct AppState {
     pub active_panel: Panel,
     pub version_panel: VersionPanel,
+    pub target_panel: TargetPanel,
 }
 
 impl AppState {
@@ -23,6 +25,7 @@ impl AppState {
         Self {
             active_panel: Panel::Version,
             version_panel: VersionPanel::new(true),
+            target_panel: TargetPanel::new(),
         }
     }
 
@@ -69,14 +72,13 @@ impl AppState {
                 Line::from("Sub-tabs are planned next, same shell style stays."),
             ],
             Panel::Mode => vec![
-                Line::from(Span::styled("Planned modes", theme.title())),
+                Line::from(Span::styled("Available Pants goals/scripts", theme.title())),
                 Line::from(""),
-                Line::from(vec![Span::styled("• Browse", theme.kind()), Span::raw(" targets")]),
-                Line::from(vec![Span::styled("• Pick", theme.kind()), Span::raw(" goal")]),
-                Line::from(vec![
-                    Span::styled("• Execute", theme.kind()),
-                    Span::raw(" / inspect results"),
-                ]),
+                Line::from("Use the Runs panel to inspect what Pants can execute."),
+                Line::from(""),
+                Line::from(vec![Span::styled("t", theme.kind()), Span::raw(" run selected target/branch")]),
+                Line::from(vec![Span::styled("A", theme.kind()), Span::raw(" run all visible targets")]),
+                Line::from(vec![Span::styled("v", theme.kind()), Span::raw(" change target view")]),
             ],
             Panel::FileExplorer => vec![
                 Line::from(Span::styled("Planned source tree", theme.title())),
@@ -110,6 +112,7 @@ impl AppState {
     pub fn set_active_panel(&mut self, panel: Panel) -> Effect {
         self.active_panel = panel;
         self.version_panel.active(panel == Panel::Version);
+        self.target_panel.sync_selection();
         Effect::Message(format!("Focus: {}", panel.title()))
     }
 

@@ -46,6 +46,8 @@ fn restore_terminal(terminal: &mut AppTerminal) -> AppResult<()> {
 
 fn event_loop(terminal: &mut AppTerminal, mut app: App) -> AppResult<()> {
     loop {
+        app.drain_events();
+        app.frame_tick();
         terminal.draw(|frame| render(frame, &app)).map_err(AppErr::Io)?;
         if let Some(effect) = next_effect(&mut app)? {
             match effect {

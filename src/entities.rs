@@ -21,7 +21,7 @@ impl Panel {
     pub fn title(self) -> &'static str {
         match self {
             Self::Version => "Version",
-            Self::Mode => "Mode",
+            Self::Mode => "Goals",
             Self::FileExplorer => "Source Tree",
             Self::Main => "Active Area",
             Self::Runs => "Runs",
