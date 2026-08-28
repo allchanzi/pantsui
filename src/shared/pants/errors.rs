@@ -8,6 +8,12 @@ pub enum PantsCommandError {
         #[source]
         source: std::io::Error,
     },
+    #[error("Command `{command}` failed with status {status}: {stderr}")]
+    CommandFailed {
+        command: String,
+        status: String,
+        stderr: String,
+    },
     #[error("Cannot convert given data `{0}`")]
     ConversionError(#[from] serde_json::Error),
 }

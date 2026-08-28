@@ -38,6 +38,16 @@ impl Panel {
         }
     }
 
+    pub fn previous(self) -> Self {
+        match self {
+            Self::Version => Self::Runs,
+            Self::Mode => Self::Version,
+            Self::FileExplorer => Self::Mode,
+            Self::Main => Self::FileExplorer,
+            Self::Runs => Self::Main,
+        }
+    }
+
     pub fn move_left(self) -> Self {
         match self {
             Self::Main => Self::Version,
@@ -69,6 +79,27 @@ impl Panel {
             Self::Mode => Self::FileExplorer,
             Self::Main => Self::Runs,
             current => current,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_and_previous_cycle_all_panels() {
+        let panels = [
+            Panel::Version,
+            Panel::Mode,
+            Panel::FileExplorer,
+            Panel::Main,
+            Panel::Runs,
+        ];
+
+        for panel in panels {
+            assert_eq!(panel.next().previous(), panel);
+            assert_eq!(panel.previous().next(), panel);
         }
     }
 }

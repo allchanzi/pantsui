@@ -5,14 +5,12 @@ use ratatui::{
 };
 
 use crate::{
-    app::Effect,
-    entities::Panel,
-    features::target::ui::TargetPanel,
-    features::version::ui::VersionPanel,
-    shared::ui::UiTheme,
+    app::Effect, entities::Panel, features::target::ui::TargetPanel,
+    features::version::ui::VersionPanel, shared::ui::UiTheme,
 };
 
-const HELP: &str = "? help • Tab cycle focus • h/j/k/l move focus • 1..5 jump to panel • q quit";
+const HELP: &str =
+    "? help • Tab/Shift+Tab switch panels • Alt/Ctrl+h/j/k/l move focus • 1..5 jump • q quit";
 
 pub struct AppState {
     pub active_panel: Panel,
@@ -34,7 +32,10 @@ impl AppState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Effect {
-        if key.modifiers.contains(KeyModifiers::ALT) {
+        if key
+            .modifiers
+            .intersects(KeyModifiers::ALT | KeyModifiers::CONTROL)
+        {
             return self.move_focus_by_key(key.code);
         }
 
@@ -42,12 +43,15 @@ impl AppState {
             KeyCode::Char('?') => Effect::ToggleHelp,
             KeyCode::Char('q') | KeyCode::Esc => Effect::Quit,
             KeyCode::Tab => self.set_active_panel(self.active_panel.next()),
+            KeyCode::BackTab => self.set_active_panel(self.active_panel.previous()),
             KeyCode::Char('1') => self.set_active_panel(Panel::Version),
             KeyCode::Char('2') => self.set_active_panel(Panel::Mode),
             KeyCode::Char('3') => self.set_active_panel(Panel::FileExplorer),
             KeyCode::Char('4') => self.set_active_panel(Panel::Main),
             KeyCode::Char('5') => self.set_active_panel(Panel::Runs),
-            KeyCode::Char('h') | KeyCode::Left => self.set_active_panel(self.active_panel.move_left()),
+            KeyCode::Char('h') | KeyCode::Left => {
+                self.set_active_panel(self.active_panel.move_left())
+            }
             KeyCode::Char('l') | KeyCode::Right => {
                 self.set_active_panel(self.active_panel.move_right())
             }
@@ -76,9 +80,18 @@ impl AppState {
                 Line::from(""),
                 Line::from("Use the Runs panel to inspect what Pants can execute."),
                 Line::from(""),
-                Line::from(vec![Span::styled("t", theme.kind()), Span::raw(" run selected target/branch")]),
-                Line::from(vec![Span::styled("A", theme.kind()), Span::raw(" run all visible targets")]),
-                Line::from(vec![Span::styled("v", theme.kind()), Span::raw(" change target view")]),
+                Line::from(vec![
+                    Span::styled("t", theme.kind()),
+                    Span::raw(" run selected target/branch"),
+                ]),
+                Line::from(vec![
+                    Span::styled("A", theme.kind()),
+                    Span::raw(" run all visible targets"),
+                ]),
+                Line::from(vec![
+                    Span::styled("v", theme.kind()),
+                    Span::raw(" change target view"),
+                ]),
             ],
             Panel::FileExplorer => vec![
                 Line::from(Span::styled("Planned source tree", theme.title())),
@@ -118,12 +131,59 @@ impl AppState {
 
     fn move_focus_by_key(&mut self, key: KeyCode) -> Effect {
         let next = match key {
-            KeyCode::Char('h') | KeyCode::Char('a') => self.active_panel.move_left(),
-            KeyCode::Char('l') | KeyCode::Char('d') => self.active_panel.move_right(),
-            KeyCode::Char('k') | KeyCode::Char('w') => self.active_panel.move_up(),
-            KeyCode::Char('j') | KeyCode::Char('s') => self.active_panel.move_down(),
+            KeyCode::Char('h') | KeyCode::Char('a') | KeyCode::Left => {
+                self.active_panel.move_left()
+            }
+            KeyCode::Char('l') | KeyCode::Char('d') | KeyCode::Right => {
+                self.active_panel.move_right()
+            }
+            KeyCode::Char('k') | KeyCode::Char('w') | KeyCode::Up => self.active_panel.move_up(),
+            KeyCode::Char('j') | KeyCode::Char('s') | KeyCode::Down => {
+                self.active_panel.move_down()
+            }
             _ => self.active_panel,
         };
         self.set_active_panel(next)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn tab_and_backtab_switch_panels_in_both_directions() {
+        let mut state = AppState::new();
+
+        state.handle_key(key(KeyCode::Tab));
+        assert_eq!(state.active_panel, Panel::Mode);
+        state.handle_key(key(KeyCode::BackTab));
+        assert_eq!(state.active_panel, Panel::Version);
+        state.handle_key(key(KeyCode::BackTab));
+        assert_eq!(state.active_panel, Panel::Runs);
+    }
+
+    #[test]
+    fn number_keys_jump_directly_to_panels() {
+        let mut state = AppState::new();
+
+        state.handle_key(key(KeyCode::Char('3')));
+        assert_eq!(state.active_panel, Panel::FileExplorer);
+        state.handle_key(key(KeyCode::Char('5')));
+        assert_eq!(state.active_panel, Panel::Runs);
+    }
+
+    #[test]
+    fn control_navigation_moves_focus_without_using_local_list_keys() {
+        let mut state = AppState::new();
+        state.set_active_panel(Panel::FileExplorer);
+
+        state.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
+
+        assert_eq!(state.active_panel, Panel::Runs);
     }
 }

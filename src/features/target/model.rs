@@ -24,6 +24,8 @@ pub enum TargetStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TargetItem {
     pub spec: String,
+    #[serde(default)]
+    pub is_test: bool,
     pub description: Option<String>,
     pub status: TargetStatus,
     pub cache_state: TargetCacheState,
@@ -35,6 +37,7 @@ impl TargetItem {
     pub fn new(spec: impl Into<String>) -> Self {
         Self {
             spec: spec.into(),
+            is_test: false,
             description: None,
             status: TargetStatus::Unknown,
             cache_state: TargetCacheState::Unknown,
@@ -43,28 +46,33 @@ impl TargetItem {
         }
     }
 
-    pub fn with_description(mut self, description: impl Into<String>) -> Self {
-        self.description = Some(description.into());
+    pub fn test_target(mut self) -> Self {
+        self.is_test = true;
         self
     }
 
-    pub fn selected(mut self) -> Self {
-        self.status = TargetStatus::Selected;
-        self
+    /// The filesystem part of a Pants address.
+    ///
+    /// `src/lib:tests` maps to `src/lib`, while
+    /// `src/lib/test_api.py:tests` maps to `src/lib/test_api.py`.
+    pub fn address_path(&self) -> &str {
+        self.spec
+            .trim_start_matches("//")
+            .split(':')
+            .next()
+            .filter(|path| !path.is_empty())
+            .unwrap_or(".")
     }
 
+    #[cfg(test)]
     pub fn cached_success(mut self) -> Self {
         self.cache_state = TargetCacheState::CachedSuccess;
         self
     }
 
+    #[cfg(test)]
     pub fn cached_failure(mut self) -> Self {
         self.cache_state = TargetCacheState::CachedFailure;
-        self
-    }
-
-    pub fn needs_run(mut self) -> Self {
-        self.cache_state = TargetCacheState::NeedsRun;
         self
     }
 
