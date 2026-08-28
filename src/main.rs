@@ -10,5 +10,11 @@ mod ui;
 use crate::{app::App, error::AppResult};
 
 fn main() -> AppResult<()> {
-    tui::run(App::new())
+    let root = std::env::args_os()
+        .nth(1)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+    tui::run(App::new(root))
 }

@@ -35,7 +35,7 @@ fn init_terminal() -> AppResult<AppTerminal> {
     enable_raw_mode().map_err(|_| AppErr::Terminal)?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
-    Terminal::new(CrosstermBackend::new(stdout)).map_err(|error| AppErr::Io(error))
+    Terminal::new(CrosstermBackend::new(stdout)).map_err(AppErr::Io)
 }
 
 fn restore_terminal(terminal: &mut AppTerminal) -> AppResult<()> {
@@ -48,11 +48,19 @@ fn event_loop(terminal: &mut AppTerminal, mut app: App) -> AppResult<()> {
     loop {
         app.drain_events();
         app.frame_tick();
-        terminal.draw(|frame| render(frame, &app)).map_err(AppErr::Io)?;
+        terminal
+            .draw(|frame| render(frame, &app))
+            .map_err(AppErr::Io)?;
         if let Some(effect) = next_effect(&mut app)? {
             match effect {
                 Effect::Quit => return Ok(()),
                 Effect::None | Effect::Message(_) | Effect::ToggleHelp => {}
+                Effect::RunInteractive { goal, specs } => {
+                    restore_terminal(terminal)?;
+                    let success = app.execute_interactive_goal(&goal, &specs);
+                    *terminal = init_terminal()?;
+                    app.finish_interactive_goal(&goal, &specs, success);
+                }
             }
         }
     }
@@ -67,7 +75,9 @@ fn next_effect(app: &mut App) -> AppResult<Option<Effect>> {
         return Ok(None);
     };
 
-    Ok((key.kind == KeyEventKind::Press).then(|| app.handle_key(key)).transpose()?)
+    (key.kind == KeyEventKind::Press)
+        .then(|| app.handle_key(key))
+        .transpose()
 }
 
 fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
@@ -91,7 +101,7 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
     );
 
     if app.show_help {
-        let area = ui::centered_rect(62, 56, frame.area());
+        let area = ui::centered_rect(68, 76, frame.area());
         frame.render_widget(Clear, area);
         frame.render_widget(
             Paragraph::new(ui::help_lines(app))

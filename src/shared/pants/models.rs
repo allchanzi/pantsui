@@ -1,3 +1,7 @@
+// The structs below mirror the `pants help-all` JSON schema in full, so fields are
+// modelled even while nothing consumes them yet.
+#![allow(dead_code)]
+
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -36,11 +40,14 @@ pub struct AllHelpInfo {
 
 impl AllHelpInfo {
     pub fn goals(&self) -> Vec<PantsGoal> {
-        self.name_to_goal_info
+        let mut goals = self
+            .name_to_goal_info
             .values()
             .filter(|goal| goal.is_implemented)
             .map(|goal| self.to_pants_goal(goal))
-            .collect()
+            .collect::<Vec<_>>();
+        goals.sort_by(|left, right| left.name.cmp(&right.name));
+        goals
     }
 
     fn to_pants_goal(&self, goal_help_info: &GoalHelpInfo) -> PantsGoal {

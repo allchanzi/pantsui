@@ -1,7 +1,4 @@
-use crate::shared::{
-    self,
-    ui::{TAB_JOINER, UiTheme},
-};
+use crate::shared::ui::{TAB_JOINER, UiTheme};
 use itertools::Itertools;
 use ratatui::{
     text::{Line, Span},
@@ -19,13 +16,6 @@ pub enum SubTab {
     Dependencies,
     #[strum(to_string = "Sub-projects")]
     SubProjects,
-}
-
-pub fn version() -> String {
-    match shared::pants::commands::pants_version() {
-        Ok(version_string) => version_string,
-        Err(err) => err.to_string(),
-    }
 }
 
 pub fn dependencies() -> String {
@@ -49,7 +39,9 @@ pub struct VersionPanel {
 impl VersionPanel {
     pub fn new(active: bool) -> Self {
         Self {
-            version_string: version(),
+            // App bootstrap fills this through its repository-scoped PantsClient.
+            // Keeping construction side-effect free also makes shell navigation testable.
+            version_string: String::from("unavailable"),
             dependencies: vec![dependencies()],
             sub_projects: vec![sub_projects()],
             active_tab: SubTab::Version,

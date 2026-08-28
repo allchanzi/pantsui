@@ -27,7 +27,7 @@ impl TargetTreeView {
     pub fn matches(self, item: &TargetItem) -> bool {
         match self {
             Self::All => true,
-            Self::Tests => item.spec.contains("test"),
+            Self::Tests => item.is_test,
             Self::Cached => item.cache_state == TargetCacheState::CachedSuccess,
             Self::CachedFailures => item.cache_state == TargetCacheState::CachedFailure,
             Self::Running => item.run_state == TargetRunState::Running,
@@ -64,7 +64,7 @@ impl TreeNode {
             path: String::new(),
             badge: TreeBadge::Neutral,
             children: Vec::new(),
-            expanded: true,
+            expanded: false,
         }
     }
 
@@ -92,28 +92,47 @@ impl TreeNode {
     }
 }
 
-pub fn build_target_tree(items: &[TargetItem], view: TargetTreeView, selected: Option<&str>) -> TreeNode {
+pub fn build_target_tree(
+    items: &[TargetItem],
+    view: TargetTreeView,
+    selected: Option<&str>,
+) -> TreeNode {
     let mut root = TreeNode::branch(view.title());
+    root.path = String::from(".");
+    root.expanded = true;
     let mut grouped: BTreeMap<&str, Vec<&TargetItem>> = BTreeMap::new();
 
     for item in items.iter().filter(|item| view.matches(item)) {
-        let group = item
-            .spec
-            .split(':')
-            .next()
-            .unwrap_or(&item.spec)
-            .split('/')
-            .next()
-            .unwrap_or(&item.spec);
+        let group = item.address_path().split('/').next().unwrap_or(".");
         grouped.entry(group).or_default().push(item);
     }
 
     for (group, grouped_items) in grouped {
+        if group == "." {
+            root.children.extend(grouped_items.into_iter().map(|item| {
+                TreeNode::leaf(
+                    item,
+                    selected == Some(item.spec.as_str()),
+                    String::from("."),
+                )
+            }));
+            continue;
+        }
         let mut group_node = TreeNode::branch(group);
+        group_node.path = group.to_string();
+        group_node.expanded = grouped_items
+            .iter()
+            .any(|item| selected == Some(item.spec.as_str()));
         for item in grouped_items {
+            let segments = path_segments(item.address_path());
+            let remaining_segments = if segments.first().is_some_and(|segment| *segment == group) {
+                &segments[1..]
+            } else {
+                &segments
+            };
             insert_segments(
                 &mut group_node,
-                &path_segments(&item.spec),
+                remaining_segments,
                 item,
                 selected == Some(item.spec.as_str()),
                 group.to_string(),
@@ -125,11 +144,8 @@ pub fn build_target_tree(items: &[TargetItem], view: TargetTreeView, selected: O
     root
 }
 
-fn path_segments(spec: &str) -> Vec<&str> {
-    spec.split(':')
-        .next()
-        .unwrap_or(spec)
-        .split('/')
+fn path_segments(path: &str) -> Vec<&str> {
+    path.split('/')
         .filter(|segment| !segment.is_empty())
         .collect()
 }
@@ -142,7 +158,9 @@ fn insert_segments(
     current_path: String,
 ) {
     match segments {
-        [] => current.children.push(TreeNode::leaf(item, selected, current_path)),
+        [] => current
+            .children
+            .push(TreeNode::leaf(item, selected, current_path)),
         [leaf] => current.children.push(TreeNode::leaf(
             item,
             selected,
@@ -156,10 +174,12 @@ fn insert_segments(
                 .unwrap_or_else(|| {
                     let mut node = TreeNode::branch(*head);
                     node.path = format!("{}/{}", current_path, head);
+                    node.expanded = selected;
                     current.children.push(node);
                     current.children.len() - 1
                 });
             let child = current.children.get_mut(index).expect("node inserted");
+            child.expanded |= selected;
             insert_segments(
                 child,
                 tail,
@@ -184,6 +204,7 @@ pub struct TreeRow {
     pub badge: TreeBadge,
     pub path: String,
     pub has_children: bool,
+    pub expanded: bool,
     pub spec: Option<String>,
 }
 
@@ -194,6 +215,7 @@ fn walk(node: &TreeNode, depth: usize, lines: &mut Vec<TreeRow>) {
         badge: node.badge,
         path: node.path.clone(),
         has_children: !node.children.is_empty(),
+        expanded: node.expanded,
         spec: node.spec.clone(),
     });
     if node.expanded {
@@ -201,10 +223,6 @@ fn walk(node: &TreeNode, depth: usize, lines: &mut Vec<TreeRow>) {
             walk(child, depth + 1, lines);
         }
     }
-}
-
-pub fn set_expanded(node: &mut TreeNode, expanded: bool) {
-    node.expanded = expanded;
 }
 
 pub fn toggle_path(node: &mut TreeNode, path: &str) -> bool {
@@ -222,20 +240,6 @@ pub fn toggle_path(node: &mut TreeNode, path: &str) -> bool {
     false
 }
 
-pub fn find_path<'a>(node: &'a TreeNode, path: &str) -> Option<&'a TreeNode> {
-    if node.path == path {
-        return Some(node);
-    }
-
-    for child in &node.children {
-        if let Some(found) = find_path(child, path) {
-            return Some(found);
-        }
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,8 +248,10 @@ mod tests {
     fn filters_by_view() {
         let items = vec![
             TargetItem::new("src/lib:lib").cached_success(),
-            TargetItem::new("tests/api:test_api").cached_failure(),
-            TargetItem::new("tests/ui:test_ui").running(),
+            TargetItem::new("tests/api:test_api")
+                .test_target()
+                .cached_failure(),
+            TargetItem::new("tests/ui:test_ui").test_target().running(),
         ];
 
         let tree = build_target_tree(&items, TargetTreeView::Tests, None);
@@ -261,5 +267,33 @@ mod tests {
         assert!(flatten_tree(&tree).iter().any(|row| {
             row.label.contains("tests/api:test_api") && row.badge == TreeBadge::Selected
         }));
+    }
+
+    #[test]
+    fn uses_unique_non_duplicated_directory_paths() {
+        let items = vec![TargetItem::new("tests/api/test_users.py:tests").test_target()];
+        let tree = build_target_tree(
+            &items,
+            TargetTreeView::All,
+            Some("tests/api/test_users.py:tests"),
+        );
+        let rows = flatten_tree(&tree);
+
+        assert!(rows.iter().any(|row| row.path == "tests"));
+        assert!(rows.iter().any(|row| row.path == "tests/api"));
+        assert!(rows.iter().any(|row| row.path == "tests/api/test_users.py"));
+        assert!(!rows.iter().any(|row| row.path.starts_with("tests/tests")));
+    }
+
+    #[test]
+    fn tests_view_uses_target_type_instead_of_name_heuristics() {
+        let items = vec![
+            TargetItem::new("src/test_helpers:lib"),
+            TargetItem::new("src/api/spec.py:unit").test_target(),
+        ];
+        let tree = build_target_tree(&items, TargetTreeView::Tests, None);
+
+        assert_eq!(tree.children.len(), 1);
+        assert_eq!(tree.children[0].name, "src");
     }
 }

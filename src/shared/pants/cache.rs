@@ -38,8 +38,29 @@ impl PantsCache {
         }
     }
 
-    pub fn default() -> Self {
-        Self::new(default_cache_dir(), Duration::from_secs(600))
+    pub fn ensure_gitignore_entry(&self) {
+        if self.root.file_name().and_then(|name| name.to_str()) != Some(".pantsui-cache") {
+            return;
+        }
+        let Some(repo_root) = self.root.parent() else {
+            return;
+        };
+        let gitignore_path = repo_root.join(".gitignore");
+        let entry = ".pantsui-cache/";
+
+        let current = fs::read_to_string(&gitignore_path).unwrap_or_default();
+        if current.lines().any(|line| line.trim() == entry) {
+            return;
+        }
+
+        let mut updated = current;
+        if !updated.is_empty() && !updated.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated.push_str(entry);
+        updated.push('\n');
+
+        let _ = fs::write(gitignore_path, updated);
     }
 
     pub fn load_targets(&self) -> Option<Vec<TargetItem>> {
@@ -54,6 +75,7 @@ impl PantsCache {
 
     pub fn store_targets(&self, targets: &[TargetItem]) {
         let _ = fs::create_dir_all(&self.root);
+        self.ensure_gitignore_entry();
         let entry = CacheEntry {
             created_at: now_secs(),
             targets: targets.to_vec(),
@@ -68,6 +90,7 @@ impl PantsCache {
         let _ = fs::remove_file(self.targets_cache_path());
     }
 
+    #[cfg(test)]
     pub fn load_target_status(&self, spec: &str) -> Option<(bool, Option<i32>)> {
         let path = self.target_status_path(spec);
         let data = fs::read_to_string(path).ok()?;
@@ -92,6 +115,7 @@ impl PantsCache {
     ) {
         let _ = fs::create_dir_all(&self.root);
         let _ = fs::create_dir_all(self.root.join("target-status"));
+        self.ensure_gitignore_entry();
         let entry = TargetStatusEntry {
             spec: spec.to_string(),
             success,
@@ -107,7 +131,9 @@ impl PantsCache {
     }
 
     fn targets_cache_path(&self) -> PathBuf {
-        self.root.join("targets.json")
+        // v2 stores both all targets and their test classification. Keeping the
+        // version in the filename avoids silently reading the older tests-only cache.
+        self.root.join("targets-v2.json")
     }
 
     fn target_status_path(&self, spec: &str) -> PathBuf {
@@ -119,13 +145,6 @@ impl PantsCache {
     fn is_expired(&self, created_at: u64) -> bool {
         now_secs().saturating_sub(created_at) > self.ttl.as_secs()
     }
-}
-
-fn default_cache_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|home| home.join(".cache").join("pantsui"))
-        .unwrap_or_else(|| PathBuf::from(".pantsui-cache"))
 }
 
 fn now_secs() -> u64 {
@@ -180,15 +199,30 @@ mod tests {
     #[test]
     fn stores_and_loads_target_status() {
         let cache = temp_cache();
-        cache.store_target_status("tests/api:test_api", true, Some(0), String::from("ok"), String::new());
+        cache.store_target_status(
+            "tests/api:test_api",
+            true,
+            Some(0),
+            String::from("ok"),
+            String::new(),
+        );
 
-        assert_eq!(cache.load_target_status("tests/api:test_api"), Some((true, Some(0))));
+        assert_eq!(
+            cache.load_target_status("tests/api:test_api"),
+            Some((true, Some(0)))
+        );
     }
 
     #[test]
     fn stores_and_loads_run_log() {
         let cache = temp_cache();
-        cache.store_target_status("tests/api:test_api", true, Some(0), String::from("ok"), String::from("warn"));
+        cache.store_target_status(
+            "tests/api:test_api",
+            true,
+            Some(0),
+            String::from("ok"),
+            String::from("warn"),
+        );
 
         assert_eq!(
             cache.load_target_run_log("tests/api:test_api"),

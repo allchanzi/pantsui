@@ -11,7 +11,6 @@ pub struct UiTheme {
     pub name: String,
     text: Color,
     subtle: Color,
-    surface: Color,
     blue: Color,
     green: Color,
     yellow: Color,
@@ -24,7 +23,6 @@ impl Default for UiTheme {
             name: "catppuccin-mocha".into(),
             text: Color::Rgb(205, 214, 244),
             subtle: Color::Rgb(108, 112, 134),
-            surface: Color::Rgb(49, 50, 68),
             blue: Color::Rgb(137, 180, 250),
             green: Color::Rgb(166, 227, 161),
             yellow: Color::Rgb(249, 226, 175),
@@ -83,12 +81,5 @@ impl UiTheme {
 
     pub fn help_title(&self) -> Style {
         Style::new().fg(self.cyan).add_modifier(Modifier::BOLD)
-    }
-
-    pub fn selected(&self) -> Style {
-        Style::new()
-            .fg(self.blue)
-            .bg(self.surface)
-            .add_modifier(Modifier::BOLD)
     }
 }

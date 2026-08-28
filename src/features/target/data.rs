@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use super::model::{TargetItem, TargetStatus};
+use super::model::TargetItem;
 
 pub fn parse_target_specs(json: &str) -> Vec<TargetItem> {
     let value: Value = serde_json::from_str(json).unwrap_or(Value::Null);
@@ -33,6 +33,10 @@ pub fn parse_target_specs_response(text: &str) -> Vec<TargetItem> {
     }
 }
 
+#[cfg(test)]
+use super::model::TargetStatus;
+
+#[cfg(test)]
 pub fn apply_selection(targets: &mut [TargetItem], selected_index: usize) {
     for (index, target) in targets.iter_mut().enumerate() {
         target.status = if index == selected_index {
