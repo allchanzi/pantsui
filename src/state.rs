@@ -10,7 +10,7 @@ use crate::{
 };
 
 const HELP: &str =
-    "? help • Tab/Shift+Tab switch panels • Alt/Ctrl+h/j/k/l move focus • 1..5 jump • q quit";
+    "Space menu • ? help • Tab/Shift+Tab switch panels • Alt/Ctrl+h/j/k/l move focus • 1..5 jump • q quit";
 
 pub struct AppState {
     pub active_panel: Panel,

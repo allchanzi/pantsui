@@ -711,17 +711,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "panels"
+version = "0.1.0"
+source = "git+https://github.com/allchanzi/tui-helpers#8b8ba70160d274dd6220411877fb42a001f68c27"
+dependencies = [
+ "ratatui",
+]
+
+[[package]]
 name = "pantsui"
 version = "0.1.1"
 dependencies = [
  "crossterm",
  "itertools",
+ "panels",
  "ratatui",
+ "rustline",
  "serde",
  "serde_json",
  "strum 0.28.0",
  "thiserror 2.0.18",
  "tokio",
+ "whichkey",
 ]
 
 [[package]]
@@ -1058,6 +1069,14 @@ dependencies = [
  "libc",
  "linux-raw-sys",
  "windows-sys",
+]
+
+[[package]]
+name = "rustline"
+version = "0.1.0"
+source = "git+https://github.com/allchanzi/tui-helpers#8b8ba70160d274dd6220411877fb42a001f68c27"
+dependencies = [
+ "ratatui",
 ]
 
 [[package]]
@@ -1648,6 +1667,14 @@ dependencies = [
  "lazy_static",
  "serde",
  "wezterm-dynamic",
+]
+
+[[package]]
+name = "whichkey"
+version = "0.1.0"
+source = "git+https://github.com/allchanzi/tui-helpers#8b8ba70160d274dd6220411877fb42a001f68c27"
+dependencies = [
+ "ratatui",
 ]
 
 [[package]]

@@ -23,3 +23,6 @@ serde_json =  "1.0.149"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2.0.18"
 tokio = {version = "1.52.0", features=["process"]}
+rustline = { git = "https://github.com/allchanzi/tui-helpers" }
+whichkey = { git = "https://github.com/allchanzi/tui-helpers" }
+panels = { git = "https://github.com/allchanzi/tui-helpers" }

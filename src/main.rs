@@ -2,6 +2,7 @@ mod app;
 mod entities;
 mod error;
 mod features;
+mod leader;
 mod shared;
 mod state;
 mod tui;

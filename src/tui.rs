@@ -83,22 +83,12 @@ fn next_effect(app: &mut App) -> AppResult<Option<Effect>> {
 fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
     let [main, footer] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(4)])
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
         .areas(frame.area());
 
     ui::render(frame, main, app);
-
-    frame.render_widget(
-        Paragraph::new(ui::footer_lines(app))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!(" Status / shortcuts • theme: {} ", app.theme.name))
-                    .border_style(app.theme.inactive_border()),
-            )
-            .wrap(Wrap { trim: true }),
-        footer,
-    );
+    crate::leader::draw_status(frame, footer, app);
+    crate::leader::draw_which_key(frame, app);
 
     if app.show_help {
         let area = ui::centered_rect(68, 76, frame.area());

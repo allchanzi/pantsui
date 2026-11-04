@@ -1,4 +1,5 @@
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use whichkey::{Outcome, WhichKey};
 use std::path::PathBuf;
 use std::sync::mpsc;
 
@@ -53,6 +54,8 @@ pub struct App {
     pub affected_tests: Vec<crate::features::target::model::TargetItem>,
     pub affected_loading: bool,
     pub filter_mode: bool,
+    pub which_key: WhichKey<&'static str>,
+    pub project: String,
     pub detail_scroll: u16,
     pub runs_scroll: u16,
     pub goal_selected: usize,
@@ -65,6 +68,10 @@ pub struct App {
 
 impl App {
     pub fn new(root: PathBuf) -> Self {
+        let project = root
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let pants_client = PantsClient::new(root);
         let (event_tx, event_rx) = mpsc::channel();
         let mut state = AppState::new();
@@ -90,6 +97,8 @@ impl App {
             affected_tests: Vec::new(),
             affected_loading: false,
             filter_mode: false,
+            which_key: crate::leader::which_key(),
+            project,
             detail_scroll: 0,
             runs_scroll: 0,
             goal_selected: 0,
@@ -134,6 +143,13 @@ impl App {
                 }
                 _ => {}
             }
+            return Ok(Effect::None);
+        }
+        if self.which_key.is_open() {
+            return Ok(self.handle_leader_key(key));
+        }
+        if key.code == KeyCode::Char(' ') && key.modifiers == KeyModifiers::NONE {
+            self.which_key.open();
             return Ok(Effect::None);
         }
         if key.modifiers.intersects(
@@ -237,11 +253,6 @@ impl App {
                     self.detail_scroll = 0;
                     return Ok(Effect::None);
                 }
-                crossterm::event::KeyCode::Char(' ') => {
-                    self.state.target_panel.toggle_tree();
-                    self.message = String::from("Toggled selected node");
-                    return Ok(Effect::None);
-                }
                 _ => {}
             }
         }
@@ -289,6 +300,66 @@ impl App {
         }
         let effect = self.state.handle_key(key);
         self.apply_local_effect(effect)
+    }
+
+    pub fn has_pending_goal(&self) -> bool {
+        self.pending_goal.is_some()
+    }
+
+    fn handle_leader_key(&mut self, key: KeyEvent) -> Effect {
+        let outcome = match key.code {
+            KeyCode::Esc => {
+                self.which_key.cancel();
+                return Effect::None;
+            }
+            KeyCode::Backspace => self.which_key.back(),
+            KeyCode::Char(character) => self.which_key.press(character),
+            _ => {
+                self.which_key.cancel();
+                return Effect::None;
+            }
+        };
+        match outcome {
+            Outcome::Action(action) => self.run_leader_action(action),
+            Outcome::Unknown => {
+                self.message = String::from("Unknown Space key");
+                Effect::None
+            }
+            Outcome::Pending | Outcome::Cancelled => Effect::None,
+        }
+    }
+
+    fn press(&mut self, character: char) -> Effect {
+        self.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE))
+            .unwrap_or(Effect::None)
+    }
+
+    fn run_leader_action(&mut self, action: &'static str) -> Effect {
+        use crate::entities::Panel;
+        match action {
+            "help" => Effect::ToggleHelp,
+            "quit" => Effect::Quit,
+            "filter" => {
+                self.state.set_active_panel(Panel::FileExplorer);
+                self.press('/')
+            }
+            "view" => self.press('v'),
+            "refresh" => self.press('R'),
+            "run_tests" => self.press('t'),
+            "run_all" => self.press('A'),
+            "run_goal" => {
+                self.state.set_active_panel(Panel::Mode);
+                self.press('g')
+            }
+            "affected_load" => self.press('d'),
+            "affected_run" => self.press('T'),
+            "panel1" => self.state.set_active_panel(Panel::Version),
+            "panel2" => self.state.set_active_panel(Panel::Mode),
+            "panel3" => self.state.set_active_panel(Panel::FileExplorer),
+            "panel4" => self.state.set_active_panel(Panel::Main),
+            "panel5" => self.state.set_active_panel(Panel::Runs),
+            _ => Effect::None,
+        }
     }
 
     pub fn drain_events(&mut self) {
