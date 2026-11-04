@@ -15,36 +15,29 @@ struct UiLayout {
     mode_area: Rect,
 }
 
-fn main_layout(area: Rect) -> UiLayout {
-    let [main_left, main_right] = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .areas(area);
-
-    let [version_area, mode_area, file_tree_area] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(22),
-            Constraint::Percentage(18),
-            Constraint::Percentage(60),
-        ])
-        .areas(main_left);
-    let [active_area, runners_area] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .areas(main_right);
-
+/// Two columns when wide, one stacked column (focused panel enlarged) when narrow.
+fn main_layout(area: Rect, active: Panel) -> UiLayout {
+    let focus = match active {
+        Panel::Version => 0,
+        Panel::Mode => 1,
+        Panel::FileExplorer => 2,
+        Panel::Main => 3,
+        Panel::Runs => 4,
+    };
+    let rects = panels::Flow::new([vec![22, 18, 60], vec![60, 40]])
+        .wide_from(100)
+        .layout(area, Some(focus));
     UiLayout {
-        version_area,
-        active_area,
-        file_tree_area,
-        runners_area,
-        mode_area,
+        version_area: rects[0],
+        mode_area: rects[1],
+        file_tree_area: rects[2],
+        active_area: rects[3],
+        runners_area: rects[4],
     }
 }
 
 pub fn render(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let ui_layout = main_layout(area);
+    let ui_layout = main_layout(area, app.state.active_panel);
 
     frame.render_widget(
         app.state.version_panel.clone_with_theme(&app.theme),
@@ -307,37 +300,6 @@ fn runs_panel_lines(app: &App) -> Vec<Line<'static>> {
     lines
 }
 
-pub fn footer_lines(app: &App) -> Vec<Line<'static>> {
-    if app.filter_mode {
-        return vec![Line::from(vec![
-            Span::styled("FILTER ", app.theme.warning()),
-            Span::raw(app.state.target_panel.filter.clone()),
-            Span::styled("  Enter/Esc finish • Backspace delete", app.theme.muted()),
-        ])];
-    }
-    let message = app.message.trim();
-    let shortcuts = crate::state::AppState::help();
-    let running = app.running_count();
-    let status = if running > 0 {
-        format!("{} running {}", app.spinner(), running)
-    } else {
-        String::from("idle")
-    };
-
-    if message.is_empty() || message == shortcuts {
-        return vec![
-            Line::from(Span::styled(status, app.theme.kind())),
-            Line::from(Span::styled(shortcuts.to_string(), app.theme.muted())),
-        ];
-    }
-
-    vec![
-        Line::from(message.to_string()),
-        Line::from(Span::styled(status, app.theme.kind())),
-        Line::from(Span::styled(shortcuts, app.theme.muted())),
-    ]
-}
-
 pub fn help_lines(app: &App) -> Vec<Line<'static>> {
     vec![
         Line::from(Span::styled("pantsui shell help", app.theme.help_title())),
@@ -384,7 +346,7 @@ pub fn help_lines(app: &App) -> Vec<Line<'static>> {
         ]),
         Line::from(vec![
             Span::styled("Space", app.theme.title()),
-            Span::raw(" .... toggle selected node"),
+            Span::raw(" .... leader menu (which-key): r run, a affected, p panel, f filter"),
         ]),
         Line::from(vec![
             Span::styled("R", app.theme.title()),
