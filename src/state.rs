@@ -10,7 +10,7 @@ use crate::{
 };
 
 const HELP: &str =
-    "Space menu • ? help • Tab/Shift+Tab switch panels • Alt/Ctrl+h/j/k/l move focus • 1..5 jump • q quit";
+    "Space menu • ? help • Tab/Shift+Tab switch panels • Ctrl+h/j/k/l move focus • 1..5 jump • q quit";
 
 pub struct AppState {
     pub active_panel: Panel,
@@ -32,16 +32,17 @@ impl AppState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Effect {
-        if key
-            .modifiers
-            .intersects(KeyModifiers::ALT | KeyModifiers::CONTROL)
-        {
+        // Alt belongs to the terminal multiplexer.
+        if key.modifiers.intersects(KeyModifiers::ALT | KeyModifiers::SUPER) {
+            return Effect::None;
+        }
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
             return self.move_focus_by_key(key.code);
         }
 
         match key.code {
             KeyCode::Char('?') => Effect::ToggleHelp,
-            KeyCode::Char('q') | KeyCode::Esc => Effect::Quit,
+            KeyCode::Char('q') => Effect::Quit,
             KeyCode::Tab => self.set_active_panel(self.active_panel.next()),
             KeyCode::BackTab => self.set_active_panel(self.active_panel.previous()),
             KeyCode::Char('1') => self.set_active_panel(Panel::Version),
@@ -131,17 +132,11 @@ impl AppState {
 
     fn move_focus_by_key(&mut self, key: KeyCode) -> Effect {
         let next = match key {
-            KeyCode::Char('h') | KeyCode::Char('a') | KeyCode::Left => {
-                self.active_panel.move_left()
-            }
-            KeyCode::Char('l') | KeyCode::Char('d') | KeyCode::Right => {
-                self.active_panel.move_right()
-            }
-            KeyCode::Char('k') | KeyCode::Char('w') | KeyCode::Up => self.active_panel.move_up(),
-            KeyCode::Char('j') | KeyCode::Char('s') | KeyCode::Down => {
-                self.active_panel.move_down()
-            }
-            _ => self.active_panel,
+            KeyCode::Char('h') | KeyCode::Left => self.active_panel.move_left(),
+            KeyCode::Char('l') | KeyCode::Right => self.active_panel.move_right(),
+            KeyCode::Char('k') | KeyCode::Up => self.active_panel.move_up(),
+            KeyCode::Char('j') | KeyCode::Down => self.active_panel.move_down(),
+            _ => return Effect::None,
         };
         self.set_active_panel(next)
     }

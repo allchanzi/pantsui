@@ -105,4 +105,7 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
             area,
         );
     }
+    if let Some(view) = &app.output_view {
+        ui::render_output(frame, ui::centered_rect(92, 92, frame.area()), app, view);
+    }
 }

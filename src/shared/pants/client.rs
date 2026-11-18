@@ -34,6 +34,15 @@ impl PantsClient {
         Self { goals, cache, root }
     }
 
+    #[cfg(test)]
+    pub fn for_tests(root: PathBuf, goals: Vec<PantsGoal>) -> Self {
+        let cache = PantsCache::new(
+            root.join(".pantsui-cache"),
+            std::time::Duration::from_secs(600),
+        );
+        Self { goals, cache, root }
+    }
+
     pub fn load_targets(&self) -> PantsResult<Vec<TargetItem>> {
         if let Some(targets) = self.cache.load_targets() {
             return Ok(self.decorate_target_status(targets));

@@ -62,8 +62,10 @@ pub fn draw_which_key(frame: &mut Frame<'_>, app: &App) {
 
 pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let theme = &app.theme;
-    let (label, accent) = if app.has_pending_goal() {
+    let (label, accent) = if app.has_pending_confirm() {
         ("CONFIRM", theme.red)
+    } else if app.output_view.is_some() {
+        ("OUTPUT", theme.yellow_color())
     } else if app.filter_mode {
         ("FILTER", theme.yellow_color())
     } else {
@@ -85,24 +87,28 @@ pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
     } else {
         (message.to_string(), theme.text_color())
     };
-    Rustline::new(
+    let mut line = Rustline::new(
         Palette {
             base: theme.base,
             text: theme.text_color(),
         },
         Separators::Powerline,
     )
-    .left(Segment::new(label, theme.base, accent).required().max_width(12))
-    .left(
-        Segment::new(&app.project, theme.base, theme.pink)
-            .max_width(24)
-            .min_width(3),
-    )
-    .left(
-        Segment::new(app.state.active_panel.title(), theme.text_color(), theme.surface)
-            .min_bar_width(80),
-    )
-    .right(Segment::new(state, theme.base, state_color).required().bold(false))
+    .left(Segment::new(label, theme.base, accent).required().max_width(12));
+    // A confirmation names its target and choices, so it gets the whole bar.
+    if !app.has_pending_confirm() {
+        line = line
+            .left(
+                Segment::new(&app.project, theme.base, theme.pink)
+                    .max_width(24)
+                    .min_width(3),
+            )
+            .left(
+                Segment::new(app.state.active_panel.title(), theme.text_color(), theme.surface)
+                    .min_bar_width(80),
+            );
+    }
+    line.right(Segment::new(state, theme.base, state_color).required().bold(false))
     .center(center, center_color)
     .draw(frame, area);
 }

@@ -1,5 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use whichkey::{Outcome, WhichKey};
+use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
@@ -43,6 +44,16 @@ pub enum AppEvent {
     },
 }
 
+/// Full output of one run, opened from the Runs panel.
+pub struct OutputView {
+    pub run: usize,
+    pub scroll: usize,
+    /// Written while rendering, because only the frame knows the wrapped height.
+    pub max_scroll: Cell<usize>,
+    pub page: Cell<usize>,
+    pending_g: bool,
+}
+
 pub struct App {
     pub state: AppState,
     pub theme: UiTheme,
@@ -57,7 +68,10 @@ pub struct App {
     pub which_key: WhichKey<&'static str>,
     pub project: String,
     pub detail_scroll: u16,
-    pub runs_scroll: u16,
+    /// Index into `run_history`; `None` follows the newest run.
+    pub runs_selected: Option<usize>,
+    pub output_view: Option<OutputView>,
+    pub pending_quit: bool,
     pub goal_selected: usize,
     pants_client: PantsClient,
     event_tx: mpsc::Sender<AppEvent>,
@@ -73,7 +87,6 @@ impl App {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
         let pants_client = PantsClient::new(root);
-        let (event_tx, event_rx) = mpsc::channel();
         let mut state = AppState::new();
         if let Ok(version_string) = pants_client.version_string() {
             state.version_panel.version_string = version_string;
@@ -81,7 +94,11 @@ impl App {
         if let Ok(targets) = pants_client.load_targets() {
             state.target_panel = crate::features::target::ui::TargetPanel::with_items(targets);
         }
+        Self::with_client(pants_client, state, project)
+    }
 
+    fn with_client(pants_client: PantsClient, state: AppState, project: String) -> Self {
+        let (event_tx, event_rx) = mpsc::channel();
         Self {
             state,
             theme: UiTheme::default(),
@@ -100,13 +117,39 @@ impl App {
             which_key: crate::leader::which_key(),
             project,
             detail_scroll: 0,
-            runs_scroll: 0,
+            runs_selected: None,
+            output_view: None,
+            pending_quit: false,
             goal_selected: 0,
             pending_goal: None,
         }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> AppResult<Effect> {
+        if self.output_view.is_some() {
+            self.handle_output_key(key);
+            return Ok(Effect::None);
+        }
+        if self.show_help {
+            if matches!(
+                key.code,
+                KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q')
+            ) {
+                self.show_help = false;
+            }
+            return Ok(Effect::None);
+        }
+        if self.pending_quit {
+            return Ok(match key.code {
+                KeyCode::Char('y') => Effect::Quit,
+                KeyCode::Char('n') | KeyCode::Esc => {
+                    self.pending_quit = false;
+                    self.message = String::from("Quit cancelled");
+                    Effect::None
+                }
+                _ => Effect::None,
+            });
+        }
         if self.pending_goal.is_some() {
             return Ok(match key.code {
                 crossterm::event::KeyCode::Char('y') => {
@@ -146,7 +189,8 @@ impl App {
             return Ok(Effect::None);
         }
         if self.which_key.is_open() {
-            return Ok(self.handle_leader_key(key));
+            let effect = self.handle_leader_key(key);
+            return self.apply_local_effect(effect);
         }
         if key.code == KeyCode::Char(' ') && key.modifiers == KeyModifiers::NONE {
             self.which_key.open();
@@ -189,10 +233,7 @@ impl App {
             return Ok(Effect::None);
         }
         if self.state.active_panel == crate::entities::Panel::Mode
-            && matches!(
-                key.code,
-                crossterm::event::KeyCode::Enter | crossterm::event::KeyCode::Char('g')
-            )
+            && key.code == KeyCode::Enter
         {
             return Ok(self.run_selected_goal());
         }
@@ -288,11 +329,15 @@ impl App {
         if self.state.active_panel == crate::entities::Panel::Runs {
             match key.code {
                 crossterm::event::KeyCode::Up | crossterm::event::KeyCode::Char('k') => {
-                    self.runs_scroll = self.runs_scroll.saturating_sub(1);
+                    self.move_run_selection(false);
                     return Ok(Effect::None);
                 }
                 crossterm::event::KeyCode::Down | crossterm::event::KeyCode::Char('j') => {
-                    self.runs_scroll = self.runs_scroll.saturating_add(1);
+                    self.move_run_selection(true);
+                    return Ok(Effect::None);
+                }
+                crossterm::event::KeyCode::Enter | crossterm::event::KeyCode::Char('o') => {
+                    self.open_output();
                     return Ok(Effect::None);
                 }
                 _ => {}
@@ -302,8 +347,82 @@ impl App {
         self.apply_local_effect(effect)
     }
 
-    pub fn has_pending_goal(&self) -> bool {
-        self.pending_goal.is_some()
+    pub fn has_pending_confirm(&self) -> bool {
+        self.pending_goal.is_some() || self.pending_quit
+    }
+
+    pub fn selected_run_index(&self) -> Option<usize> {
+        let last = self.run_history.len().checked_sub(1)?;
+        Some(self.runs_selected.unwrap_or(last).min(last))
+    }
+
+    /// The panel lists newest first, so moving down goes to an older run.
+    fn move_run_selection(&mut self, older: bool) {
+        let Some(current) = self.selected_run_index() else {
+            return;
+        };
+        let last = self.run_history.len() - 1;
+        let next = if older {
+            current.saturating_sub(1)
+        } else {
+            (current + 1).min(last)
+        };
+        self.runs_selected = (next != last).then_some(next);
+    }
+
+    fn open_output(&mut self) {
+        use crate::features::run::model::RunStatus;
+
+        let Some(run) = self.selected_run_index() else {
+            self.message = String::from("No runs yet");
+            return;
+        };
+        // A failure is reported at the end of the output.
+        let scroll = if self.run_history[run].status == RunStatus::Failed {
+            usize::MAX
+        } else {
+            0
+        };
+        self.output_view = Some(OutputView {
+            run,
+            scroll,
+            max_scroll: Cell::new(0),
+            page: Cell::new(1),
+            pending_g: false,
+        });
+    }
+
+    fn handle_output_key(&mut self, key: KeyEvent) {
+        let Some(view) = self.output_view.as_mut() else {
+            return;
+        };
+        let max = view.max_scroll.get();
+        let page = view.page.get().max(1);
+        let scroll = view.scroll.min(max);
+        let pending_g = std::mem::take(&mut view.pending_g);
+        let control = key.modifiers.contains(KeyModifiers::CONTROL);
+        view.scroll = match key.code {
+            KeyCode::Esc | KeyCode::Char('q' | 'o') => {
+                self.output_view = None;
+                return;
+            }
+            KeyCode::Char('d') if control => scroll.saturating_add(page / 2).min(max),
+            KeyCode::Char('u') if control => scroll.saturating_sub(page / 2),
+            KeyCode::Char('f') if control => scroll.saturating_add(page).min(max),
+            KeyCode::Char('b') if control => scroll.saturating_sub(page),
+            KeyCode::PageDown => scroll.saturating_add(page).min(max),
+            KeyCode::PageUp => scroll.saturating_sub(page),
+            KeyCode::Down | KeyCode::Char('j') => scroll.saturating_add(1).min(max),
+            KeyCode::Up | KeyCode::Char('k') => scroll.saturating_sub(1),
+            KeyCode::Home => 0,
+            KeyCode::Char('g') if pending_g => 0,
+            KeyCode::Char('g') => {
+                view.pending_g = true;
+                scroll
+            }
+            KeyCode::End | KeyCode::Char('G') => max,
+            _ => scroll,
+        };
     }
 
     fn handle_leader_key(&mut self, key: KeyEvent) -> Effect {
@@ -349,7 +468,7 @@ impl App {
             "run_all" => self.press('A'),
             "run_goal" => {
                 self.state.set_active_panel(Panel::Mode);
-                self.press('g')
+                self.run_selected_goal()
             }
             "affected_load" => self.press('d'),
             "affected_run" => self.press('T'),
@@ -547,8 +666,9 @@ impl App {
             Vec::new()
         };
         if GoalKind::for_name(&goal_name) == GoalKind::Mutating {
-            self.pending_goal = Some((goal_name.clone(), specs));
-            self.message = format!("Run mutating goal {goal_name}? y confirm / n cancel");
+            let command = command_label(&goal_name, &specs);
+            self.pending_goal = Some((goal_name, specs));
+            self.message = format!("[y]es / [n]o • Run mutating {command}?");
             Effect::None
         } else {
             self.start_goal(goal_name, specs)
@@ -560,7 +680,6 @@ impl App {
 
         let command = command_label(&goal, &specs);
         self.run_history.push(RunItem::running(command.clone()));
-        self.runs_scroll = 0;
         self.message = format!("Running {command}");
         if GoalKind::for_name(&goal) == GoalKind::Interactive {
             return Effect::RunInteractive { goal, specs };
@@ -598,7 +717,6 @@ impl App {
             run.spec == spec && run.status == crate::features::run::model::RunStatus::Running
         }) {
             self.run_history.push(RunItem::running(spec));
-            self.runs_scroll = 0;
         }
         if let Some(target) = self
             .state
@@ -618,6 +736,14 @@ impl App {
 
     fn apply_local_effect(&mut self, effect: Effect) -> AppResult<Effect> {
         Ok(match effect {
+            Effect::Quit if self.running_count() > 0 => {
+                self.pending_quit = true;
+                self.message = format!(
+                    "[y]es / [n]o • {} run(s) in progress. Quit without waiting?",
+                    self.running_count()
+                );
+                Effect::None
+            }
             Effect::Message(message) => {
                 self.message = message;
                 Effect::None
@@ -649,6 +775,141 @@ fn goal_accepts_specs(goal: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::entities::Panel;
+    use crate::features::run::model::RunStatus;
+    use crate::features::target::{model::TargetItem, ui::TargetPanel};
+    use crate::shared::pants::models::PantsGoal;
+
+    fn app() -> App {
+        let goal = |name: &str| PantsGoal {
+            name: name.into(),
+            description: String::new(),
+            flags: Vec::new(),
+        };
+        let mut state = AppState::new();
+        state.target_panel = TargetPanel::with_items(vec![TargetItem::new("src/lib:lib")]);
+        App::with_client(
+            PantsClient::for_tests("/nonexistent".into(), vec![goal("lint"), goal("fmt")]),
+            state,
+            "project".into(),
+        )
+    }
+
+    fn press(app: &mut App, code: KeyCode) -> Effect {
+        app.handle_key(KeyEvent::new(code, KeyModifiers::NONE)).unwrap()
+    }
+
+    #[test]
+    fn help_is_modal_so_hidden_shortcuts_do_not_run_and_esc_only_closes_it() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char('?'));
+        assert!(app.show_help);
+        press(&mut app, KeyCode::Char('A'));
+        assert!(app.run_history.is_empty());
+        assert_eq!(press(&mut app, KeyCode::Esc), Effect::None);
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn leader_help_opens_help() {
+        let mut app = app();
+        press(&mut app, KeyCode::Char(' '));
+        press(&mut app, KeyCode::Char('?'));
+        assert!(app.show_help);
+    }
+
+    #[test]
+    fn g_never_runs_a_goal() {
+        let mut app = app();
+        app.state.set_active_panel(Panel::Mode);
+        press(&mut app, KeyCode::Char('g'));
+        press(&mut app, KeyCode::Char('g'));
+        assert!(app.run_history.is_empty());
+    }
+
+    #[test]
+    fn mutating_goal_confirmation_names_the_scope() {
+        let mut app = app();
+        app.state.set_active_panel(Panel::Mode);
+        app.goal_selected = 1;
+        press(&mut app, KeyCode::Enter);
+        assert!(app.has_pending_confirm());
+        assert!(app.message.contains("pants fmt ::"), "{}", app.message);
+        press(&mut app, KeyCode::Char('n'));
+        assert!(!app.has_pending_confirm());
+    }
+
+    #[test]
+    fn esc_never_quits_and_q_asks_only_while_runs_are_active() {
+        let mut app = app();
+        assert_eq!(press(&mut app, KeyCode::Esc), Effect::None);
+        app.run_history.push(RunItem::running("src:test"));
+        assert_eq!(press(&mut app, KeyCode::Char('q')), Effect::None);
+        assert!(app.pending_quit);
+        press(&mut app, KeyCode::Char('n'));
+        assert!(!app.pending_quit);
+        press(&mut app, KeyCode::Char('q'));
+        assert_eq!(press(&mut app, KeyCode::Char('y')), Effect::Quit);
+        app.run_history[0].status = RunStatus::Passed;
+        app.pending_quit = false;
+        assert_eq!(press(&mut app, KeyCode::Char('q')), Effect::Quit);
+    }
+
+    #[test]
+    fn control_keys_do_not_move_focus_unless_they_are_ctrl_hjkl() {
+        let mut app = app();
+        app.state.set_active_panel(Panel::FileExplorer);
+        for code in ['d', 'a', 'c'] {
+            app.handle_key(KeyEvent::new(KeyCode::Char(code), KeyModifiers::CONTROL))
+                .unwrap();
+            assert_eq!(app.state.active_panel, Panel::FileExplorer);
+        }
+        app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::ALT))
+            .unwrap();
+        assert_eq!(app.state.active_panel, Panel::FileExplorer);
+        app.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(app.state.active_panel, Panel::Runs);
+    }
+
+    #[test]
+    fn output_of_a_failed_run_opens_at_the_end_and_scrolls_within_bounds() {
+        let mut app = app();
+        let mut failed = RunItem::running("src:failed");
+        failed.finish(false, String::from("first\nlast"), String::new());
+        app.run_history.push(failed);
+        app.run_history.push(RunItem::running("src:newest"));
+        app.state.set_active_panel(Panel::Runs);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.selected_run_index(), Some(0));
+        press(&mut app, KeyCode::Enter);
+        let view = app.output_view.as_ref().unwrap();
+        assert_eq!(view.run, 0);
+        assert_eq!(view.scroll, usize::MAX);
+        view.max_scroll.set(10);
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.output_view.as_ref().unwrap().scroll, 10);
+        press(&mut app, KeyCode::Char('k'));
+        assert_eq!(app.output_view.as_ref().unwrap().scroll, 9);
+        press(&mut app, KeyCode::Char('g'));
+        press(&mut app, KeyCode::Char('g'));
+        assert_eq!(app.output_view.as_ref().unwrap().scroll, 0);
+        assert_eq!(press(&mut app, KeyCode::Esc), Effect::None);
+        assert!(app.output_view.is_none());
+    }
+
+    #[test]
+    fn new_runs_do_not_move_a_selected_older_run() {
+        let mut app = app();
+        app.run_history.push(RunItem::running("a"));
+        app.run_history.push(RunItem::running("b"));
+        app.state.set_active_panel(Panel::Runs);
+        press(&mut app, KeyCode::Char('j'));
+        app.run_history.push(RunItem::running("c"));
+        assert_eq!(app.selected_run_index(), Some(0));
+        press(&mut app, KeyCode::Char('k'));
+        assert_eq!(app.selected_run_index(), Some(1));
+    }
 
     #[test]
     fn formats_goal_command_labels() {
