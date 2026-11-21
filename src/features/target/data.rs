@@ -91,7 +91,11 @@ mod tests {
 
     #[test]
     fn selects_one_target_and_marks_others_loaded() {
-        let mut targets = vec![TargetItem::new("b"), TargetItem::new("a"), TargetItem::new("c")];
+        let mut targets = vec![
+            TargetItem::new("b"),
+            TargetItem::new("a"),
+            TargetItem::new("c"),
+        ];
 
         apply_selection(&mut targets, 1);
 

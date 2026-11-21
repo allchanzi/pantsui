@@ -12,6 +12,7 @@ pub fn which_key() -> WhichKey<&'static str> {
         Entry::action('f', "Filter targets", "filter"),
         Entry::action('v', "Cycle target view", "view"),
         Entry::action('R', "Refresh targets", "refresh"),
+        Entry::action('t', "Tests under selection", "run_tests"),
         Entry::group(
             'r',
             "Run",
@@ -27,17 +28,6 @@ pub fn which_key() -> WhichKey<&'static str> {
             vec![
                 Entry::action('l', "Load affected tests", "affected_load"),
                 Entry::action('r', "Run affected tests", "affected_run"),
-            ],
-        ),
-        Entry::group(
-            'p',
-            "Panel",
-            vec![
-                Entry::action('1', "Version", "panel1"),
-                Entry::action('2', "Goals", "panel2"),
-                Entry::action('3', "Source tree", "panel3"),
-                Entry::action('4', "Active area", "panel4"),
-                Entry::action('5', "Runs", "panel5"),
             ],
         ),
     ]))
@@ -62,7 +52,9 @@ pub fn draw_which_key(frame: &mut Frame<'_>, app: &App) {
 
 pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let theme = &app.theme;
-    let (label, accent) = if app.has_pending_confirm() {
+    let (label, accent) = if app.show_help {
+        ("HELP", theme.yellow_color())
+    } else if app.has_pending_confirm() {
         ("CONFIRM", theme.red)
     } else if app.output_view.is_some() {
         ("OUTPUT", theme.yellow_color())
@@ -73,17 +65,28 @@ pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
     };
     let running = app.running_count();
     let (state, state_color) = if running > 0 {
-        (format!("{} running {running}", app.spinner()), theme.yellow_color())
+        (
+            format!("{} running {running}", app.spinner()),
+            theme.yellow_color(),
+        )
     } else {
         ("idle".to_string(), theme.blue_color())
     };
     let message = app.message.trim();
     let (center, center_color) = if app.filter_mode {
-        (format!("/{}", app.state.target_panel.filter), theme.yellow_color())
+        (
+            format!("/{}", app.state.target_panel.filter),
+            theme.yellow_color(),
+        )
     } else if app.which_key.is_open() {
         (app.which_key.summary(), theme.subtle_color())
+    } else if app.nav_pending() {
+        ("g …".to_string(), theme.yellow_color())
     } else if message.is_empty() || message == crate::state::AppState::help() {
-        ("Space menu • ? help • q quit".to_string(), theme.subtle_color())
+        (
+            "[Space] menu • [?] help • [q]uit".to_string(),
+            theme.subtle_color(),
+        )
     } else {
         (message.to_string(), theme.text_color())
     };
@@ -92,9 +95,13 @@ pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
             base: theme.base,
             text: theme.text_color(),
         },
-        Separators::Powerline,
+        Separators::from_env(),
     )
-    .left(Segment::new(label, theme.base, accent).required().max_width(12));
+    .left(
+        Segment::new(label, theme.base, accent)
+            .required()
+            .max_width(12),
+    );
     // A confirmation names its target and choices, so it gets the whole bar.
     if !app.has_pending_confirm() {
         line = line
@@ -104,11 +111,19 @@ pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
                     .min_width(3),
             )
             .left(
-                Segment::new(app.state.active_panel.title(), theme.text_color(), theme.surface)
-                    .min_bar_width(80),
+                Segment::new(
+                    app.state.active_panel.title(),
+                    theme.text_color(),
+                    theme.surface,
+                )
+                .min_bar_width(80),
             );
     }
-    line.right(Segment::new(state, theme.base, state_color).required().bold(false))
+    line.right(
+        Segment::new(state, theme.base, state_color)
+            .required()
+            .bold(false),
+    )
     .center(center, center_color)
     .draw(frame, area);
 }

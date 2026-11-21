@@ -87,6 +87,13 @@ pub fn pants_affected_python_tests(cwd: &Path, spec: &str) -> PantsResult<String
     .to_string())
 }
 
+pub fn pants_dependencies(cwd: &Path, spec: &str) -> PantsResult<String> {
+    Ok(String::from_utf8_lossy(
+        &execute_checked(cwd, vec![String::from("dependencies"), spec.to_string()])?.stdout,
+    )
+    .to_string())
+}
+
 pub fn pants_goal_output(
     cwd: &Path,
     goal: &str,

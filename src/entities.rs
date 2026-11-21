@@ -23,7 +23,7 @@ impl Panel {
             Self::Version => "Version",
             Self::Mode => "Goals",
             Self::FileExplorer => "Source Tree",
-            Self::Main => "Active Area",
+            Self::Main => "Details",
             Self::Runs => "Runs",
         }
     }

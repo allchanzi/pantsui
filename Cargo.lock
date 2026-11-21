@@ -713,7 +713,7 @@ dependencies = [
 [[package]]
 name = "panels"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers#8b8ba70160d274dd6220411877fb42a001f68c27"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
 dependencies = [
  "ratatui",
 ]
@@ -732,6 +732,7 @@ dependencies = [
  "strum 0.28.0",
  "thiserror 2.0.18",
  "tokio",
+ "tuikit",
  "whichkey",
 ]
 
@@ -1074,7 +1075,7 @@ dependencies = [
 [[package]]
 name = "rustline"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers#8b8ba70160d274dd6220411877fb42a001f68c27"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
 dependencies = [
  "ratatui",
 ]
@@ -1415,6 +1416,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tuikit"
+version = "0.1.0"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
+dependencies = [
+ "crossterm",
+ "ratatui",
+]
+
+[[package]]
 name = "typenum"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1672,7 +1682,7 @@ dependencies = [
 [[package]]
 name = "whichkey"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers#8b8ba70160d274dd6220411877fb42a001f68c27"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
 dependencies = [
  "ratatui",
 ]

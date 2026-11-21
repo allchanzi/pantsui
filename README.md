@@ -66,6 +66,27 @@ pantsui
 
 Run from inside a Pants repository where `pants` is already available on your `PATH`.
 
+### Keys
+
+| Key | Action |
+|---|---|
+| `tab` / `shift-tab`, `1`-`5`, `ctrl-h/j/k/l` | Move between panels |
+| `j` / `k`, `gg` / `G`, `ctrl-u/d`, `ctrl-b/f` | Move or scroll inside the focused panel |
+| `h` / `l` | In the tree, collapse or go to parent / expand; in Version, previous / next section; elsewhere, the panel beside it |
+| `1`, then `l` | Dependencies of the selection in the tree; it follows the selection while open, and `R` reloads |
+| `1`, then `h` | Sub-projects: the folders holding the targets, with target and test counts |
+| `r` (also `t`) | Run tests under the selection |
+| `o`, `enter` in Runs | Full output of a target's last run or the selected run |
+| `/` | Filter targets with smartcase; `enter` applies, `esc` restores |
+| `a`, `T` | Find affected tests, run them |
+| `A`, `R`, `v` | Run all visible tests, refresh targets, cycle views |
+| `enter` in Goals | Run the selected goal; mutating goals ask first |
+| `space`, `?` | Action menu, help for the focused panel |
+| `ctrl-c` | Cancel what is open or pending; it does not quit |
+| `q` | Quit; asks while runs are active |
+
+Set `TUI_FOOTER_PLAIN=1` for fonts without Powerline glyphs.
+
 ## Goals as actions
 
 Pants exposes ~30 goals. pantsui classifies each into one of four kinds that drive how the UI runs it:

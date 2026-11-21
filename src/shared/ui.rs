@@ -1,6 +1,6 @@
 use ratatui::{
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Line, Span},
     widgets::{Block, Borders},
 };
 
@@ -57,6 +57,10 @@ impl UiTheme {
     }
 
     pub fn panel_block(&self, title: impl Into<String>, focused: bool) -> Block<'static> {
+        self.panel_block_line(Line::from(title.into()), focused)
+    }
+
+    pub fn panel_block_line(&self, title: Line<'static>, focused: bool) -> Block<'static> {
         Block::default()
             .borders(Borders::ALL)
             .border_style(if focused {
@@ -64,7 +68,7 @@ impl UiTheme {
             } else {
                 self.inactive_border()
             })
-            .title(title.into())
+            .title(title)
     }
 
     pub fn focused_border(&self) -> Style {

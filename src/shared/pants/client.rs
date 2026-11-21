@@ -30,7 +30,6 @@ impl PantsClient {
             root.join(".pantsui-cache"),
             std::time::Duration::from_secs(600),
         );
-        cache.ensure_gitignore_entry();
         Self { goals, cache, root }
     }
 
@@ -118,6 +117,15 @@ impl PantsClient {
             .load_targets()?
             .into_iter()
             .filter(|target| target.is_test && affected_specs.contains(&target.spec))
+            .collect())
+    }
+
+    pub fn dependencies(&self, spec: &str) -> PantsResult<Vec<String>> {
+        Ok(commands::pants_dependencies(&self.root, spec)?
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(String::from)
             .collect())
     }
 

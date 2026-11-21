@@ -98,11 +98,7 @@ impl TargetPanel {
             .items
             .iter()
             .filter(|item| {
-                self.filter.is_empty()
-                    || item
-                        .spec
-                        .to_lowercase()
-                        .contains(&self.filter.to_lowercase())
+                self.filter.is_empty() || tuikit::smart_contains(&item.spec, &self.filter)
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -142,17 +138,36 @@ impl TargetPanel {
         }
     }
 
-    pub fn move_cursor_up(&mut self) {
-        self.cursor = self.cursor.saturating_sub(1);
+    pub fn move_cursor_to(&mut self, cursor: usize) {
+        self.cursor = cursor.min(self.rows.len().saturating_sub(1));
         self.sync_selected_to_cursor();
     }
 
-    pub fn move_cursor_down(&mut self) {
-        let len = self.rows.len();
-        if self.cursor + 1 < len {
-            self.cursor += 1;
+    /// Open folders close; anything else moves to its parent, as in nvim-tree.
+    pub fn collapse_or_parent(&mut self) {
+        let Some(row) = self.current_row() else {
+            return;
+        };
+        if row.has_children && row.expanded {
+            self.toggle_tree();
+            return;
         }
-        self.sync_selected_to_cursor();
+        let depth = row.depth;
+        if let Some(parent) = self.rows[..self.cursor]
+            .iter()
+            .rposition(|row| row.depth < depth)
+        {
+            self.move_cursor_to(parent);
+        }
+    }
+
+    pub fn expand(&mut self) {
+        if self
+            .current_row()
+            .is_some_and(|row| row.has_children && !row.expanded)
+        {
+            self.toggle_tree();
+        }
     }
 
     pub fn current_row(&self) -> Option<&TreeRow> {
@@ -191,13 +206,12 @@ impl TargetPanel {
     }
 
     pub fn visible_test_specs(&self) -> Vec<String> {
-        let filter = self.filter.to_lowercase();
         self.items
             .iter()
             .filter(|item| {
                 item.is_test
                     && self.view.matches(item)
-                    && (filter.is_empty() || item.spec.to_lowercase().contains(&filter))
+                    && (self.filter.is_empty() || tuikit::smart_contains(&item.spec, &self.filter))
             })
             .map(|item| item.spec.clone())
             .collect()
@@ -264,7 +278,7 @@ pub fn render(
     state.select(Some(panel.cursor));
 
     let title = format!(
-        "Global / [{}] {} / {}{}",
+        "[{}] Global / {} / {}{}",
         Panel::FileExplorer.shortcut(),
         Panel::FileExplorer.title(),
         panel.view.title(),

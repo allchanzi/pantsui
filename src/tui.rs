@@ -12,7 +12,6 @@ use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
 use crate::{
@@ -47,6 +46,7 @@ fn restore_terminal(terminal: &mut AppTerminal) -> AppResult<()> {
 fn event_loop(terminal: &mut AppTerminal, mut app: App) -> AppResult<()> {
     loop {
         app.drain_events();
+        app.load_open_section();
         app.frame_tick();
         terminal
             .draw(|frame| render(frame, &app))
@@ -75,12 +75,20 @@ fn next_effect(app: &mut App) -> AppResult<Option<Effect>> {
         return Ok(None);
     };
 
+    // Nothing is visible below the minimum size, so only quitting is safe.
+    let (width, height) = crossterm::terminal::size().map_err(AppErr::Io)?;
+    if !tuikit::fits(width, height) && key.code != crossterm::event::KeyCode::Char('q') {
+        return Ok(None);
+    }
     (key.kind == KeyEventKind::Press)
         .then(|| app.handle_key(key))
         .transpose()
 }
 
 fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
+    if tuikit::too_small(frame, frame.area()) {
+        return;
+    }
     let [main, footer] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1)])
@@ -91,18 +99,12 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &App) {
     crate::leader::draw_which_key(frame, app);
 
     if app.show_help {
-        let area = ui::centered_rect(68, 76, frame.area());
-        frame.render_widget(Clear, area);
-        frame.render_widget(
-            Paragraph::new(ui::help_lines(app))
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(" Help (?) ")
-                        .border_style(app.theme.focused_border()),
-                )
-                .wrap(Wrap { trim: true }),
-            area,
+        app.help_popup.render(
+            frame,
+            main,
+            " [?] Help ",
+            ui::help_lines(app),
+            app.theme.focused_border(),
         );
     }
     if let Some(view) = &app.output_view {

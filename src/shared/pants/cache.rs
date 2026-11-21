@@ -38,29 +38,9 @@ impl PantsCache {
         }
     }
 
-    pub fn ensure_gitignore_entry(&self) {
-        if self.root.file_name().and_then(|name| name.to_str()) != Some(".pantsui-cache") {
-            return;
-        }
-        let Some(repo_root) = self.root.parent() else {
-            return;
-        };
-        let gitignore_path = repo_root.join(".gitignore");
-        let entry = ".pantsui-cache/";
-
-        let current = fs::read_to_string(&gitignore_path).unwrap_or_default();
-        if current.lines().any(|line| line.trim() == entry) {
-            return;
-        }
-
-        let mut updated = current;
-        if !updated.is_empty() && !updated.ends_with('\n') {
-            updated.push('\n');
-        }
-        updated.push_str(entry);
-        updated.push('\n');
-
-        let _ = fs::write(gitignore_path, updated);
+    /// Make the cache folder ignore itself, so the repo's own `.gitignore` is never edited.
+    fn ignore_itself(&self) {
+        let _ = fs::write(self.root.join(".gitignore"), "*\n");
     }
 
     pub fn load_targets(&self) -> Option<Vec<TargetItem>> {
@@ -75,7 +55,7 @@ impl PantsCache {
 
     pub fn store_targets(&self, targets: &[TargetItem]) {
         let _ = fs::create_dir_all(&self.root);
-        self.ensure_gitignore_entry();
+        self.ignore_itself();
         let entry = CacheEntry {
             created_at: now_secs(),
             targets: targets.to_vec(),
@@ -115,7 +95,7 @@ impl PantsCache {
     ) {
         let _ = fs::create_dir_all(&self.root);
         let _ = fs::create_dir_all(self.root.join("target-status"));
-        self.ensure_gitignore_entry();
+        self.ignore_itself();
         let entry = TargetStatusEntry {
             spec: spec.to_string(),
             success,
@@ -174,6 +154,21 @@ mod tests {
             std::thread::current().id()
         ));
         PantsCache::new(root, Duration::from_secs(3600))
+    }
+
+    #[test]
+    fn cache_folder_ignores_itself_without_touching_the_repo() {
+        let repo = std::env::temp_dir().join(format!("pantsui-ignore-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(&repo).unwrap();
+        fs::write(repo.join(".gitignore"), b"\xffkeep\n").unwrap();
+        PantsCache::new(repo.join(".pantsui-cache"), Duration::from_secs(60)).store_targets(&[]);
+        assert_eq!(fs::read(repo.join(".gitignore")).unwrap(), b"\xffkeep\n");
+        assert_eq!(
+            fs::read_to_string(repo.join(".pantsui-cache/.gitignore")).unwrap(),
+            "*\n"
+        );
+        fs::remove_dir_all(repo).unwrap();
     }
 
     #[test]

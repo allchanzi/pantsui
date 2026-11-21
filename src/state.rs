@@ -1,16 +1,12 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{
-    text::{Line, Span},
-    widgets::Paragraph,
-};
-
 use crate::{
-    app::Effect, entities::Panel, features::target::ui::TargetPanel,
-    features::version::ui::VersionPanel, shared::ui::UiTheme,
+    app::Effect,
+    entities::Panel,
+    features::target::ui::TargetPanel,
+    features::version::{data::sub_projects, ui::VersionPanel},
 };
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-const HELP: &str =
-    "Space menu • ? help • Tab/Shift+Tab switch panels • Ctrl+h/j/k/l move focus • 1..5 jump • q quit";
+const HELP: &str = "Space menu • ? help • Tab/Shift+Tab switch panels • Ctrl+h/j/k/l move focus • 1..5 jump • q quit";
 
 pub struct AppState {
     pub active_panel: Panel,
@@ -21,10 +17,20 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         Self {
-            active_panel: Panel::Version,
-            version_panel: VersionPanel::new(true),
+            active_panel: Panel::FileExplorer,
+            version_panel: VersionPanel::new(false),
             target_panel: TargetPanel::new(),
         }
+    }
+
+    /// Sub-projects are derived from the targets, so they follow every target reload.
+    pub fn sync_sub_projects(&mut self) {
+        self.version_panel.sub_projects = sub_projects(
+            self.target_panel
+                .items
+                .iter()
+                .map(|target| (target.address_path(), target.is_test)),
+        );
     }
 
     pub fn help() -> &'static str {
@@ -33,7 +39,10 @@ impl AppState {
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Effect {
         // Alt belongs to the terminal multiplexer.
-        if key.modifiers.intersects(KeyModifiers::ALT | KeyModifiers::SUPER) {
+        if key
+            .modifiers
+            .intersects(KeyModifiers::ALT | KeyModifiers::SUPER)
+        {
             return Effect::None;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -50,77 +59,22 @@ impl AppState {
             KeyCode::Char('3') => self.set_active_panel(Panel::FileExplorer),
             KeyCode::Char('4') => self.set_active_panel(Panel::Main),
             KeyCode::Char('5') => self.set_active_panel(Panel::Runs),
+            KeyCode::Char('h') | KeyCode::Left if self.active_panel == Panel::Version => {
+                self.version_panel.previous_tab();
+                Effect::None
+            }
+            KeyCode::Char('l') | KeyCode::Right if self.active_panel == Panel::Version => {
+                self.version_panel.next_tab();
+                Effect::None
+            }
             KeyCode::Char('h') | KeyCode::Left => {
                 self.set_active_panel(self.active_panel.move_left())
             }
             KeyCode::Char('l') | KeyCode::Right => {
                 self.set_active_panel(self.active_panel.move_right())
             }
-            KeyCode::Char('k') | KeyCode::Up => self.set_active_panel(self.active_panel.move_up()),
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.set_active_panel(self.active_panel.move_down())
-            }
             _ => Effect::None,
         }
-    }
-
-    pub fn panel_content(&self, panel: Panel, theme: &UiTheme) -> Paragraph<'static> {
-        let lines = match panel {
-            Panel::Version => vec![
-                Line::from(vec![
-                    Span::styled("Source:", theme.kind()),
-                    Span::raw(" "),
-                    Span::styled("pants version", theme.value()),
-                ]),
-                Line::from(""),
-                Line::from("Use Tab or h/j/k/l to move focus."),
-                Line::from("Sub-tabs are planned next, same shell style stays."),
-            ],
-            Panel::Mode => vec![
-                Line::from(Span::styled("Available Pants goals/scripts", theme.title())),
-                Line::from(""),
-                Line::from("Use the Runs panel to inspect what Pants can execute."),
-                Line::from(""),
-                Line::from(vec![
-                    Span::styled("t", theme.kind()),
-                    Span::raw(" run selected target/branch"),
-                ]),
-                Line::from(vec![
-                    Span::styled("A", theme.kind()),
-                    Span::raw(" run all visible targets"),
-                ]),
-                Line::from(vec![
-                    Span::styled("v", theme.kind()),
-                    Span::raw(" change target view"),
-                ]),
-            ],
-            Panel::FileExplorer => vec![
-                Line::from(Span::styled("Planned source tree", theme.title())),
-                Line::from(""),
-                Line::from("This panel will list Pants-relevant source roots / files."),
-                Line::from(vec![
-                    Span::styled("Status:", theme.kind()),
-                    Span::raw(" "),
-                    Span::styled("placeholder", theme.warning()),
-                ]),
-            ],
-            Panel::Main => vec![
-                Line::from(Span::styled("Planned active workflow", theme.title())),
-                Line::from(""),
-                Line::from("Targets / goals / details will land here."),
-            ],
-            Panel::Runs => vec![
-                Line::from(Span::styled("Planned run history", theme.title())),
-                Line::from(""),
-                Line::from("Recent Pants actions, statuses and logs will appear here."),
-                Line::from(vec![
-                    Span::styled("Style:", theme.kind()),
-                    Span::raw(" PDE-like shell, pantsui content"),
-                ]),
-            ],
-        };
-
-        Paragraph::new(lines)
     }
 
     pub fn set_active_panel(&mut self, panel: Panel) -> Effect {
@@ -153,6 +107,7 @@ mod tests {
     #[test]
     fn tab_and_backtab_switch_panels_in_both_directions() {
         let mut state = AppState::new();
+        state.set_active_panel(Panel::Version);
 
         state.handle_key(key(KeyCode::Tab));
         assert_eq!(state.active_panel, Panel::Mode);
@@ -160,6 +115,38 @@ mod tests {
         assert_eq!(state.active_panel, Panel::Version);
         state.handle_key(key(KeyCode::BackTab));
         assert_eq!(state.active_panel, Panel::Runs);
+    }
+
+    #[test]
+    fn h_and_l_switch_sections_in_the_version_panel_and_ctrl_leaves_it() {
+        use crate::features::version::ui::SubTab;
+        let mut state = AppState::new();
+        state.set_active_panel(Panel::Version);
+        state.handle_key(key(KeyCode::Char('l')));
+        assert_eq!(state.active_panel, Panel::Version);
+        assert_eq!(state.version_panel.active_tab, SubTab::Dependencies);
+        state.handle_key(key(KeyCode::Char('h')));
+        assert_eq!(state.version_panel.active_tab, SubTab::Version);
+        state.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
+        assert_eq!(state.active_panel, Panel::Main);
+    }
+
+    #[test]
+    fn sub_projects_come_from_the_loaded_targets() {
+        use crate::features::target::model::TargetItem;
+        let mut state = AppState::new();
+        state.target_panel = TargetPanel::with_items(vec![
+            TargetItem::new("projects/a/x.py:lib"),
+            TargetItem::new("projects/b/test_y.py:tests").test_target(),
+        ]);
+        state.sync_sub_projects();
+        let summary = state
+            .version_panel
+            .sub_projects
+            .iter()
+            .map(|project| (project.path.as_str(), project.targets, project.tests))
+            .collect::<Vec<_>>();
+        assert_eq!(summary, [("projects/a", 1, 0), ("projects/b", 1, 1)]);
     }
 
     #[test]

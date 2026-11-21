@@ -43,10 +43,17 @@ fn main_layout(area: Rect, active: Panel) -> UiLayout {
 pub fn render(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let ui_layout = main_layout(area, app.state.active_panel);
 
-    frame.render_widget(
-        app.state.version_panel.clone_with_theme(&app.theme),
-        ui_layout.version_area,
-    );
+    let version = app.state.version_panel.clone_with_theme(&app.theme);
+    let (version_max, version_rows) = version.scroll_range(ui_layout.version_area);
+    app.version_max.set(version_max);
+    if app.state.active_panel == Panel::Version {
+        app.panel_rows.set(version_rows);
+    }
+    frame.render_widget(version, ui_layout.version_area);
+    if app.state.active_panel == Panel::FileExplorer {
+        app.panel_rows
+            .set(ui_layout.file_tree_area.height.saturating_sub(2) as usize);
+    }
     render_placeholder_panel(frame, ui_layout.mode_area, Panel::Mode, app);
     target_ui::render(
         frame,
@@ -61,8 +68,11 @@ pub fn render(frame: &mut Frame<'_>, area: Rect, app: &App) {
 
 fn render_target_detail(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let focused = app.state.active_panel == Panel::Main;
+    if focused {
+        app.panel_rows.set(area.height.saturating_sub(2) as usize);
+    }
     let title = format!(
-        "Selected / [{}] {}",
+        "[{}] Selected / {}",
         Panel::Main.shortcut(),
         Panel::Main.title()
     );
@@ -140,7 +150,7 @@ fn render_target_detail(frame: &mut Frame<'_>, area: Rect, app: &App) {
             if !app.affected_loading {
                 if app.affected_tests.is_empty() {
                     lines.push(Line::from(Span::styled(
-                        "press d to calculate",
+                        "press [a] to find them",
                         app.theme.muted(),
                     )));
                 } else {
@@ -172,7 +182,7 @@ fn render_target_detail(frame: &mut Frame<'_>, area: Rect, app: &App) {
             lines.extend([
                 Line::from(""),
                 Line::from(Span::styled("Actions", app.theme.title())),
-                Line::from("t run scoped • d find affected • T run affected"),
+                Line::from("[r]un scoped • [a]ffected • [T] run affected"),
             ]);
             lines
         })
@@ -184,22 +194,25 @@ fn render_target_detail(frame: &mut Frame<'_>, area: Rect, app: &App) {
             ]
         });
 
-    frame.render_widget(
-        Paragraph::new(content)
-            .block(block)
-            .wrap(Wrap { trim: true })
-            .scroll((app.detail_scroll, 0)),
-        area,
-    );
+    let paragraph = Paragraph::new(content).wrap(Wrap { trim: true });
+    let max = paragraph
+        .line_count(area.width.saturating_sub(2))
+        .saturating_sub(area.height.saturating_sub(2) as usize);
+    app.detail_max.set(max);
+    let scroll = usize::from(app.detail_scroll).min(max) as u16;
+    frame.render_widget(paragraph.block(block).scroll((scroll, 0)), area);
 }
 
 fn render_placeholder_panel(frame: &mut Frame<'_>, area: Rect, panel: Panel, app: &App) {
     let focused = app.state.active_panel == panel;
+    if focused {
+        app.panel_rows.set(area.height.saturating_sub(2) as usize);
+    }
     let title = match panel {
-        Panel::Mode => format!("Global / [{}] {}", panel.shortcut(), panel.title()),
-        Panel::FileExplorer => format!("Global / [{}] {}", panel.shortcut(), panel.title()),
-        Panel::Main => format!("Selected / [{}] {}", panel.shortcut(), panel.title()),
-        Panel::Runs => format!("Selected / [{}] {}", panel.shortcut(), panel.title()),
+        Panel::Mode => format!("[{}] Global / {}", panel.shortcut(), panel.title()),
+        Panel::FileExplorer => format!("[{}] Global / {}", panel.shortcut(), panel.title()),
+        Panel::Main => format!("[{}] Selected / {}", panel.shortcut(), panel.title()),
+        Panel::Runs => format!("[{}] Selected / {}", panel.shortcut(), panel.title()),
         Panel::Version => format!("[{}] {}", panel.shortcut(), panel.title()),
     };
     let block: Block<'static> = app.theme.panel_block(title, focused);
@@ -218,10 +231,7 @@ fn render_placeholder_panel(frame: &mut Frame<'_>, area: Rect, panel: Panel, app
         .block(block)
         .wrap(Wrap { trim: true })
     } else {
-        app.state
-            .panel_content(panel, &app.theme)
-            .block(block)
-            .wrap(Wrap { trim: true })
+        Paragraph::new("").block(block)
     };
     frame.render_widget(widget, area);
 }
@@ -276,7 +286,10 @@ const RUN_PREVIEW_LINES: usize = 8;
 
 fn runs_panel_lines(app: &App, height: usize) -> Vec<Line<'static>> {
     let mut lines = vec![Line::from(Span::styled(
-        format!("Run history ({}) • [j/k] select • [Enter/o] output", app.run_history.len()),
+        format!(
+            "Run history ({}) • [j/k] select • [Enter/o] output",
+            app.run_history.len()
+        ),
         app.theme.help_title(),
     ))];
     let Some(selected) = app.selected_run_index() else {
@@ -288,13 +301,7 @@ fn runs_panel_lines(app: &App, height: usize) -> Vec<Line<'static>> {
     let position = app.run_history.len() - 1 - selected;
     let rows = height.saturating_sub(1);
     let start = position.saturating_sub(rows.saturating_sub(RUN_PREVIEW_LINES + 1));
-    for (index, run) in app
-        .run_history
-        .iter()
-        .enumerate()
-        .rev()
-        .skip(start)
-    {
+    for (index, run) in app.run_history.iter().enumerate().rev().skip(start) {
         let (badge, style) = run_badge(run.status, app);
         let is_selected = index == selected;
         lines.push(Line::from(vec![
@@ -336,7 +343,11 @@ fn wrap_output(output: &str, width: usize) -> Vec<String> {
         if characters.is_empty() {
             wrapped.push(String::new());
         }
-        wrapped.extend(characters.chunks(width.max(1)).map(|chunk| chunk.iter().collect::<String>()));
+        wrapped.extend(
+            characters
+                .chunks(width.max(1))
+                .map(|chunk| chunk.iter().collect::<String>()),
+        );
     }
     wrapped
 }
@@ -352,8 +363,7 @@ pub fn render_output(frame: &mut Frame<'_>, area: Rect, app: &App, view: &Output
     let inner = block.inner(area);
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
-    let [body, hint] =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
+    let [body, hint] = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
 
     let lines = wrap_output(&run.output, body.width as usize);
     let height = body.height as usize;
@@ -381,7 +391,7 @@ pub fn render_output(frame: &mut Frame<'_>, area: Rect, app: &App, view: &Output
     frame.render_widget(Paragraph::new(content), body);
     frame.render_widget(
         Paragraph::new(format!(
-            "[j/k] scroll • [Ctrl+d/u] half page • [gg/G] top/bottom • [Esc] close • {}/{}",
+            "[j/k] scroll • [gg/G] ends • [Esc] close • {}/{}",
             (scroll + height).min(lines.len()),
             lines.len()
         ))
@@ -391,84 +401,61 @@ pub fn render_output(frame: &mut Frame<'_>, area: Rect, app: &App, view: &Output
 }
 
 pub fn help_lines(app: &App) -> Vec<Line<'static>> {
-    vec![
-        Line::from(Span::styled("pantsui shell help", app.theme.help_title())),
+    let row = |keys: &'static str, text: &'static str| {
+        Line::from(vec![
+            Span::styled(format!("{keys:<16}"), app.theme.title()),
+            Span::raw(text),
+        ])
+    };
+    let panel = app.state.active_panel;
+    let mut lines = vec![Line::from(Span::styled(
+        format!("{} shortcuts", panel.title()),
+        app.theme.help_title(),
+    ))];
+    lines.extend(match panel {
+        Panel::FileExplorer => vec![
+            row("[j/k]", "move"),
+            row("[h/l]", "collapse or parent / expand"),
+            row("[Enter]", "toggle folder"),
+            row("[r]un", "tests under the selection (also [t])"),
+            row("[o]utput", "last output of the selected target"),
+            row("[/]", "filter, smartcase; [Enter] applies, [Esc] cancels"),
+            row("[v]iew", "cycle target views"),
+        ],
+        Panel::Mode => vec![
+            row("[j/k]", "select goal"),
+            row("[Enter]", "run the selected goal; mutating goals ask first"),
+        ],
+        Panel::Main => vec![row("[j/k]", "scroll details")],
+        Panel::Runs => vec![
+            row("[j/k]", "select run, newest first"),
+            row("[Enter/o]", "full output of the selected run"),
+        ],
+        Panel::Version => vec![
+            row("[h/l]", "previous / next section"),
+            row("[j/k]", "scroll the section"),
+            row("Dependencies", "of the selection in [3]; [R] reloads"),
+            row("Sub-projects", "folders holding the targets, with counts"),
+            row("[Ctrl+l]", "leave for the panel on the right"),
+        ],
+    });
+    lines.extend([
         Line::from(""),
-        Line::from(vec![
-            Span::styled("Tab", app.theme.title()),
-            Span::raw(" ........ next panel"),
-        ]),
-        Line::from(vec![
-            Span::styled("Shift+Tab", app.theme.title()),
-            Span::raw(" .. previous panel"),
-        ]),
-        Line::from(vec![
-            Span::styled("h/j/k/l", app.theme.title()),
-            Span::raw(" .... move focus by direction"),
-        ]),
-        Line::from(vec![
-            Span::styled("Ctrl+h/j/k/l", app.theme.title()),
-            Span::raw("  move focus by direction"),
-        ]),
-        Line::from(vec![
-            Span::styled("1..5", app.theme.title()),
-            Span::raw(" ....... jump directly to a panel"),
-        ]),
-        Line::from(vec![
-            Span::styled("?", app.theme.title()),
-            Span::raw(" .......... toggle this help"),
-        ]),
-        Line::from(vec![
-            Span::styled("q", app.theme.title()),
-            Span::raw(" .......... quit (asks while runs are active)"),
-        ]),
-        Line::from(vec![
-            Span::styled("t", app.theme.title()),
-            Span::raw(" .......... run selected target or branch"),
-        ]),
-        Line::from(vec![
-            Span::styled("A", app.theme.title()),
-            Span::raw(" .......... run all visible targets"),
-        ]),
-        Line::from(vec![
-            Span::styled("v", app.theme.title()),
-            Span::raw(" .......... cycle target views"),
-        ]),
-        Line::from(vec![
-            Span::styled("Space", app.theme.title()),
-            Span::raw(" .... leader menu (which-key): r run, a affected, p panel, f filter"),
-        ]),
-        Line::from(vec![
-            Span::styled("R", app.theme.title()),
-            Span::raw(" .......... refresh Pants targets"),
-        ]),
-        Line::from(vec![
-            Span::styled("/", app.theme.title()),
-            Span::raw(" .......... filter target tree"),
-        ]),
-        Line::from(vec![
-            Span::styled("d / T", app.theme.title()),
-            Span::raw(" ..... find / run affected tests"),
-        ]),
-        Line::from(vec![
-            Span::styled("Enter", app.theme.title()),
-            Span::raw(" ...... run selected Pants goal / open run output"),
-        ]),
-        Line::from(vec![
-            Span::styled("j / k", app.theme.title()),
-            Span::raw(" ...... navigate or scroll focused panel"),
-        ]),
-        Line::from(""),
-        Line::from("Current implementation mirrors PDE-style shell structure:"),
-        Line::from(vec![
-            Span::styled("app.rs", app.theme.kind()),
-            Span::raw(" = state/effects, "),
-            Span::styled("tui.rs", app.theme.kind()),
-            Span::raw(" = runtime, "),
-            Span::styled("ui.rs", app.theme.kind()),
-            Span::raw(" = layout composition."),
-        ]),
-    ]
+        Line::from(Span::styled("Everywhere", app.theme.help_title())),
+        row("[Tab/S-Tab]", "next / previous panel"),
+        row("[1-5]", "jump to a panel"),
+        row("[Ctrl+h/j/k/l]", "focus the panel in that direction"),
+        row("[gg/G]", "first / last"),
+        row("[Ctrl+u/d]", "half page; [Ctrl+b/f] full page"),
+        row("[a]ffected", "find affected tests; [T] runs them"),
+        row("[A]", "run all visible tests"),
+        row("[R]", "refresh Pants targets"),
+        row("[Space]", "action menu"),
+        row("[?]", "this help; [Esc] closes"),
+        row("[Ctrl+c]", "cancel what is open or pending"),
+        row("[q]uit", "asks while runs are active"),
+    ]);
+    lines
 }
 
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
