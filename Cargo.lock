@@ -713,7 +713,7 @@ dependencies = [
 [[package]]
 name = "panels"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=ea97318dc22767476ea1d385435ec7260f360631#ea97318dc22767476ea1d385435ec7260f360631"
 dependencies = [
  "ratatui",
 ]
@@ -1075,7 +1075,7 @@ dependencies = [
 [[package]]
 name = "rustline"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=ea97318dc22767476ea1d385435ec7260f360631#ea97318dc22767476ea1d385435ec7260f360631"
 dependencies = [
  "ratatui",
 ]
@@ -1418,7 +1418,7 @@ dependencies = [
 [[package]]
 name = "tuikit"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=ea97318dc22767476ea1d385435ec7260f360631#ea97318dc22767476ea1d385435ec7260f360631"
 dependencies = [
  "crossterm",
  "ratatui",
@@ -1682,7 +1682,7 @@ dependencies = [
 [[package]]
 name = "whichkey"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers?rev=def5058a50a3491e667d1aa5bda03aafd47a0e39#def5058a50a3491e667d1aa5bda03aafd47a0e39"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=ea97318dc22767476ea1d385435ec7260f360631#ea97318dc22767476ea1d385435ec7260f360631"
 dependencies = [
  "ratatui",
 ]

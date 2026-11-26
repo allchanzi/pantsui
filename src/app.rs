@@ -67,6 +67,7 @@ pub struct OutputView {
 }
 
 pub struct App {
+    pub text_area: std::cell::Cell<ratatui::layout::Rect>,
     pub state: AppState,
     pub theme: UiTheme,
     pub message: String,
@@ -136,6 +137,7 @@ impl App {
             filter_mode: false,
             filter_before: None,
             nav: NavKeys::default(),
+            text_area: Default::default(),
             help_popup: ScrollPopup::default(),
             panel_rows: Cell::new(10),
             detail_max: Cell::new(0),

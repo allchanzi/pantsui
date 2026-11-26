@@ -42,6 +42,14 @@ fn main_layout(area: Rect, active: Panel) -> UiLayout {
 
 pub fn render(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let ui_layout = main_layout(area, app.state.active_panel);
+    let focused = match app.state.active_panel {
+        Panel::Version => ui_layout.version_area,
+        Panel::Mode => ui_layout.mode_area,
+        Panel::FileExplorer => ui_layout.file_tree_area,
+        Panel::Main => ui_layout.active_area,
+        Panel::Runs => ui_layout.runners_area,
+    };
+    app.text_area.set(Block::bordered().inner(focused));
 
     let version = app.state.version_panel.clone_with_theme(&app.theme);
     let (version_max, version_rows) = version.scroll_range(ui_layout.version_area);
@@ -364,6 +372,7 @@ pub fn render_output(frame: &mut Frame<'_>, area: Rect, app: &App, view: &Output
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
     let [body, hint] = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
+    app.text_area.set(body);
 
     let lines = wrap_output(&run.output, body.width as usize);
     let height = body.height as usize;
@@ -442,6 +451,10 @@ pub fn help_lines(app: &App) -> Vec<Line<'static>> {
     lines.extend([
         Line::from(""),
         Line::from(Span::styled("Everywhere", app.theme.help_title())),
+        row(
+            "Mouse drag",
+            "select active pane; [y/Ctrl+c] copy, [Esc] cancel",
+        ),
         row("[Tab/S-Tab]", "next / previous panel"),
         row("[1-5]", "jump to a panel"),
         row("[Ctrl+h/j/k/l]", "focus the panel in that direction"),
